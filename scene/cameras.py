@@ -12,12 +12,15 @@
 import torch
 from torch import nn
 import numpy as np
-from utils.graphics_utils import getWorld2View2, getProjectionMatrix
+from utils.graphics_utils import getWorld2View2, getProjectionMatrix, getProjectionMatrix_p
+from utils.general_utils import PILtoTorch
+import cv2
 
 class Camera(nn.Module):
     def __init__(self, colmap_id, R, T, FoVx, FoVy, image, gt_alpha_mask,
                  image_name, uid,
-                 trans=np.array([0.0, 0.0, 0.0]), scale=1.0, data_device = "cuda"
+                 trans=np.array([0.0, 0.0, 0.0]), scale=1.0, data_device = "cuda",
+                fovx_r=0.0, fovx_l=0.0, fovy_t=0.0, fovy_b=0.0
                  ):
         super(Camera, self).__init__()
 
@@ -28,6 +31,11 @@ class Camera(nn.Module):
         self.FoVx = FoVx
         self.FoVy = FoVy
         self.image_name = image_name
+        self.fovx_r = fovx_r
+        self.fovx_l = fovx_l
+        self.fovy_t = fovy_t
+        self.fovy_b = fovy_b
+
 
         try:
             self.data_device = torch.device(data_device)
@@ -50,12 +58,13 @@ class Camera(nn.Module):
 
         self.trans = trans
         self.scale = scale
-
+        
         self.world_view_transform = torch.tensor(getWorld2View2(R, T, trans, scale)).transpose(0, 1).cuda()
-        self.projection_matrix = getProjectionMatrix(znear=self.znear, zfar=self.zfar, fovX=self.FoVx, fovY=self.FoVy).transpose(0,1).cuda()
+        #self.projection_matrix = getProjectionMatrix(znear=self.znear, zfar=self.zfar, fovX=self.FoVx, fovY=self.FoVy).transpose(0,1).cuda()
+        self.projection_matrix = getProjectionMatrix_p(fovx_r=self.fovx_r, fovx_l=self.fovx_l, fovy_t=self.fovy_t, fovy_b=self.fovy_b, near=self.znear, far=self.zfar).transpose(0,1).cuda()
         self.full_proj_transform = (self.world_view_transform.unsqueeze(0).bmm(self.projection_matrix.unsqueeze(0))).squeeze(0)
         self.camera_center = self.world_view_transform.inverse()[3, :3]
-
+        
 class MiniCam:
     def __init__(self, width, height, fovy, fovx, znear, zfar, world_view_transform, full_proj_transform):
         self.image_width = width

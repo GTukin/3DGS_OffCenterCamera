@@ -47,7 +47,31 @@ def getWorld2View2(R, t, translate=np.array([.0, .0, .0]), scale=1.0):
     C2W[:3, 3] = cam_center
     Rt = np.linalg.inv(C2W)
     return np.float32(Rt)
+def getProjectionMatrix_p(fovx_r,fovx_l,fovy_t,fovy_b, near, far):
+    """
+    偏心投影矩阵计算方法
+    Xo, Yo: 区域中心在像素坐标系中的位置
+    W, H: 区域宽高
+    fx, fy: 相机内参
+    near, far: 近平面、远平面
+    """
+    # 计算视场角
+    Right = math.tan(fovx_r) * near
+    Left = math.tan(fovx_l) * near
+    Top = math.tan(fovy_t) * near
+    Bottom = math.tan(fovy_b) * near
 
+    z_sign = -1.0
+    # 用torch实现投影矩阵
+    P = torch.zeros(4, 4)
+    P[0, 0] = 2 * near / (Right - Left)
+    P[0, 2] = (Right + Left) / (Right - Left)
+    P[1, 1] = 2 * near / (Top - Bottom)
+    P[1, 2] = (Top + Bottom) / (Top - Bottom)
+    P[2, 2] = -z_sign * (far + near) / (far - near)
+    P[2, 3] = -2 * far * near / (far - near)
+    P[3, 2] = -1 * z_sign
+    return P
 def getProjectionMatrix(znear, zfar, fovX, fovY):
     tanHalfFovY = math.tan((fovY / 2))
     tanHalfFovX = math.tan((fovX / 2))

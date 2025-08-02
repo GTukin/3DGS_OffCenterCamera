@@ -34,6 +34,10 @@ class CameraInfo(NamedTuple):
     image_name: str
     width: int
     height: int
+    fovx_r: float = 0.0
+    fovx_l: float = 0.0
+    fovy_t: float = 0.0
+    fovy_b: float = 0.0
 
 class SceneInfo(NamedTuple):
     point_cloud: BasicPointCloud
@@ -65,7 +69,7 @@ def getNerfppNorm(cam_info):
 
     return {"translate": translate, "radius": radius}
 
-def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
+def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder, fov_results_dict):
     cam_infos = []
     for idx, key in enumerate(cam_extrinsics):
         sys.stdout.write('\r')
@@ -74,9 +78,20 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
         sys.stdout.flush()
 
         extr = cam_extrinsics[key]
+        fov_data = fov_results_dict.get(extr.name)
         intr = cam_intrinsics[extr.camera_id]
-        height = intr.height
-        width = intr.width
+        fovx_r = fov_data['fovx_r'] if fov_data else 0.0
+        fovx_l = fov_data['fovx_l'] if fov_data else 0.0
+        fovy_t = fov_data['fovy_t'] if fov_data else 0.0
+        fovy_b = fov_data['fovy_b'] if fov_data else 0.0
+        width_p = fov_data['width_p'] if fov_data and 'width_p' in fov_data else 0.0
+        height_p = fov_data['height_p'] if fov_data and 'height_p' in fov_data else 0.0
+        
+        
+        #height = intr.height
+        #width = intr.width
+        height = height_p #改称我文件中的数值
+        width = width_p
 
         uid = intr.id
         R = np.transpose(qvec2rotmat(extr.qvec))
@@ -99,7 +114,8 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
         image = Image.open(image_path)
 
         cam_info = CameraInfo(uid=uid, R=R, T=T, FovY=FovY, FovX=FovX, image=image,
-                              image_path=image_path, image_name=image_name, width=width, height=height)
+                              image_path=image_path, image_name=image_name, width=width, height=height,
+                              fovx_r=fovx_r, fovx_l=fovx_l, fovy_t=fovy_t, fovy_b=fovy_b)
         cam_infos.append(cam_info)
     sys.stdout.write('\n')
     return cam_infos
@@ -140,9 +156,25 @@ def readColmapSceneInfo(path, images, eval, llffhold=8):
         cameras_intrinsic_file = os.path.join(path, "sparse/0", "cameras.txt")
         cam_extrinsics = read_extrinsics_text(cameras_extrinsic_file)
         cam_intrinsics = read_intrinsics_text(cameras_intrinsic_file)
-
+    # 读取fov_results.txt
+    fov_results_path = os.path.join(path, "sparse/0", "fov_results.txt")
+    fov_results_dict = {}
+    if os.path.exists(fov_results_path):
+        with open(fov_results_path, 'r') as f:
+            for line in f:
+                parts = line.strip().split(',')
+                if len(parts) == 8:
+                    idx, img_name, fovx_r, fovx_l, fovy_t, fovy_b, width_p, height_p = parts
+                    fov_results_dict[img_name] = {
+                        'fovx_r': float(fovx_r),
+                        'fovx_l': float(fovx_l),
+                        'fovy_t': float(fovy_t),
+                        'fovy_b': float(fovy_b),
+                        'width_p': float(width_p),
+                        'height_p': float(height_p)
+                    }
     reading_dir = "images" if images == None else images
-    cam_infos_unsorted = readColmapCameras(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, images_folder=os.path.join(path, reading_dir))
+    cam_infos_unsorted = readColmapCameras(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, images_folder=os.path.join(path, reading_dir),fov_results_dict=fov_results_dict)
     cam_infos = sorted(cam_infos_unsorted.copy(), key = lambda x : x.image_name)
 
     if eval:

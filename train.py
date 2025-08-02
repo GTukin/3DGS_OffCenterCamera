@@ -11,6 +11,7 @@
 
 import os
 import torch
+import numpy
 from random import randint
 from utils.loss_utils import l1_loss, ssim
 from gaussian_renderer import render, network_gui
@@ -35,7 +36,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     scene = Scene(dataset, gaussians)
     gaussians.training_setup(opt)
     if checkpoint:
-        (model_params, first_iter) = torch.load(checkpoint)
+        (model_params, first_iter) = torch.load(checkpoint, weights_only=False)
         gaussians.restore(model_params, opt)
 
     bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
@@ -82,6 +83,17 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             pipe.debug = True
         render_pkg = render(viewpoint_cam, gaussians, pipe, background)
         image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
+
+        # import torchvision.transforms as T
+
+        # img_to_show = image.detach().cpu().clamp(0, 1)
+        # if img_to_show.shape[0] == 1: # 单通道灰度
+        #     img_to_show = img_to_show.repeat(3, 1, 1)
+
+        # to_pil = T.ToPILImage()
+        # pil_img = to_pil(img_to_show)
+        # pil_img.save('output.png') # 保存图片到本地文件
+        # import pdb;pdb.set_trace()
 
         # Loss
         gt_image = viewpoint_cam.original_image.cuda()

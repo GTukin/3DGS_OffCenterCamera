@@ -11,8 +11,10 @@
 
 from scene.cameras import Camera
 import numpy as np
-from utils.general_utils import PILtoTorch
 from utils.graphics_utils import fov2focal
+from utils.general_utils import PILtoTorch
+from PIL import Image
+import cv2
 
 WARNED = False
 
@@ -49,7 +51,9 @@ def loadCam(args, id, cam_info, resolution_scale):
     return Camera(colmap_id=cam_info.uid, R=cam_info.R, T=cam_info.T, 
                   FoVx=cam_info.FovX, FoVy=cam_info.FovY, 
                   image=gt_image, gt_alpha_mask=loaded_mask,
-                  image_name=cam_info.image_name, uid=id, data_device=args.data_device)
+                  image_name=cam_info.image_name, uid=id, data_device=args.data_device,
+                  fovx_r=cam_info.fovx_r, fovx_l=cam_info.fovx_l, fovy_t=cam_info.fovy_t, fovy_b=cam_info.fovy_b)
+
 
 def cameraList_from_camInfos(cam_infos, resolution_scale, args):
     camera_list = []
@@ -79,4 +83,3 @@ def camera_to_JSON(id, camera : Camera):
         'fy' : fov2focal(camera.FovY, camera.height),
         'fx' : fov2focal(camera.FovX, camera.width)
     }
-    return camera_entry
