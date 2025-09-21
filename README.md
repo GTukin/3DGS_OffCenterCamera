@@ -6,7 +6,7 @@
 ## 主要新增功能
 
 ### 1. 偏心投影计算模块
-- **文件位置**: `ocScripts/calcFov/calc_fov.py.py`
+- **文件位置**: `ocScripts/calcFov/calc_fov.py`
 - **功能**: 计算偏心投影的FOV参数（r, l, b, t），和camera.txt+images.txt编码对应
 - **核心特性**:
   - 支持偏心投影矩阵计算
@@ -97,7 +97,7 @@ python crop_and_resize copy.py
 ```
 ocScripts/
 ├── calcFov/
-│   ├── 3dgs_calc_fov.py          # FOV计算主程序
+│   ├── calc_fov.py          # FOV计算主程序
 │   └── data-qianqian-body/       # 示例数据
 └── offCenterAnno/
     ├── image_annotator.py         # 图像标注工具
