@@ -7,7 +7,7 @@
 
 ### 1. 偏心投影计算模块
 - **文件位置**: `ocScripts/calcFov/calc_fov.py.py`
-- **功能**: 计算偏心投影的FOV参数（r, l, b, t）
+- **功能**: 计算偏心投影的FOV参数（r, l, b, t），和camera.txt+images.txt编码对应
 - **核心特性**:
   - 支持偏心投影矩阵计算
   - 支持FOV边界参数（fovx_r, fovx_l, fovy_t, fovy_b）
