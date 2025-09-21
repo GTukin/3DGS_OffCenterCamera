@@ -65,7 +65,7 @@
 ### 1. 计算FOV参数
 ```bash
 cd ocScripts/calcFov
-python 3dgs_calc_fov.py
+python calc_fov.py
 ```
 
 ### 2. 标注图像
