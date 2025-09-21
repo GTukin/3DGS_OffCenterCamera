@@ -6,11 +6,10 @@
 ## 主要新增功能
 
 ### 1. 偏心投影计算模块
-- **文件位置**: `ocScripts/calcFov/3dgs_calc_fov.py`
+- **文件位置**: `ocScripts/calcFov/calc_fov.py.py`
 - **功能**: 计算偏心投影的FOV参数（r, l, b, t）
 - **核心特性**:
   - 支持偏心投影矩阵计算
-  - 实现自定义的渲染器类 `Rasterizer`
   - 支持FOV边界参数（fovx_r, fovx_l, fovy_t, fovy_b）
 
 ### 2. 图像标注工具
