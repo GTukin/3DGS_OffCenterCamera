@@ -56,7 +56,7 @@ def loadCam(args, id, cam_info, resolution_scale):
                   ocmodel=args.ocmodel)
 
 
-def cameraList_from_camInfos(cam_infos, resolution_scale, args):
+def cameraList_from_camInfos(cam_infos, resolution_scale, args, camera_set_name=""):
     camera_list = []
     offcenter_proj_count = 0  # 统计实际使用偏心投影的相机数量
     standard_proj_count = 0    # 统计使用标准投影的相机数量
@@ -74,22 +74,24 @@ def cameraList_from_camInfos(cam_infos, resolution_scale, args):
     # 输出最终统计信息
     total_cameras = len(camera_list)
     
+    # 构建相机集标识前缀
+    set_prefix = f"[{camera_set_name}] " if camera_set_name else ""
+    
     if args.ocmodel:
         if total_cameras == 0:
-            print(f"[信息] 测试集为空，没有测试相机需要加载（这是正常的，当eval=False时测试集为空）")
             return camera_list  # 测试集为空时直接返回，不显示统计信息
         
         if offcenter_proj_count > 0 and standard_proj_count > 0:
-            print(f"[混合模式] ✓ ocmodel已启用，{offcenter_proj_count}个相机使用偏心投影，{standard_proj_count}个相机使用标准投影")
+            print(f"[混合模式] {set_prefix}ocmodel已启用，{offcenter_proj_count}个相机使用偏心投影，{standard_proj_count}个相机使用标准投影")
         elif offcenter_proj_count > 0:
-            print(f"[投影模式] ocmodel已启用，所有{offcenter_proj_count}个相机都使用偏心投影")
+            print(f"[投影模式] {set_prefix}ocmodel已启用，所有{offcenter_proj_count}个相机都使用偏心投影")
         else:
-            print(f"[参数检查] ⚠ 警告: ocmodel已启用，但所有{total_cameras}个相机都没有有效的偏心参数")
+            print(f"[投影模式] {set_prefix}ocmodel已启用，{total_cameras}个相机使用标准投影（无有效偏心参数）")
     else:
         if offcenter_proj_count == 0:
-            print(f"[投影模式] ocmodel未启用，所有{standard_proj_count}个相机都使用标准投影")
+            print(f"[投影模式] {set_prefix}ocmodel未启用，所有{standard_proj_count}个相机都使用标准投影")
         else:
-            print(f"[异常] ocmodel未启用，但检测到{offcenter_proj_count}个相机使用偏心投影（这不应该发生）")
+            print(f"[异常] {set_prefix}ocmodel未启用，但检测到{offcenter_proj_count}个相机使用偏心投影（这不应该发生）")
 
     return camera_list
 
