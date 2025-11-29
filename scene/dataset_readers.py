@@ -71,6 +71,11 @@ def getNerfppNorm(cam_info):
 
 def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder, fov_results_dict):
     cam_infos = []
+    offcenter_count = 0  # 统计有偏心参数的相机数量
+    standard_count = 0   # 统计无偏心参数的相机数量
+    matched_count = 0    # 统计成功匹配fov_results的相机数量
+    unmatched_names = [] # 记录未匹配的图片名称（最多记录前5个）
+    
     for idx, key in enumerate(cam_extrinsics):
         sys.stdout.write('\r')
         # the exact output you're looking for:
@@ -78,7 +83,22 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder, fov_results
         sys.stdout.flush()
 
         extr = cam_extrinsics[key]
-        fov_data = fov_results_dict.get(extr.name)
+        # 尝试精确匹配和去除路径的匹配
+        img_name_from_colmap = extr.name
+        fov_data = fov_results_dict.get(img_name_from_colmap)
+        
+        # 如果精确匹配失败，尝试只匹配文件名（去除路径）
+        if fov_data is None:
+            img_name_basename = os.path.basename(img_name_from_colmap)
+            fov_data = fov_results_dict.get(img_name_basename)
+            if fov_data is not None:
+                # 更新字典，使用basename作为key，方便后续匹配
+                fov_results_dict[img_name_from_colmap] = fov_data
+        
+        if fov_data:
+            matched_count += 1
+        elif len(unmatched_names) < 5:
+            unmatched_names.append(img_name_from_colmap)
         intr = cam_intrinsics[extr.camera_id]
         fovx_r = fov_data['fovx_r'] if fov_data else 0.0
         fovx_l = fov_data['fovx_l'] if fov_data else 0.0
@@ -87,11 +107,21 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder, fov_results
         width_p = fov_data['width_p'] if fov_data and 'width_p' in fov_data else 0.0
         height_p = fov_data['height_p'] if fov_data and 'height_p' in fov_data else 0.0
         
+        # 检查是否有有效的偏心参数
+        has_valid_offcenter = (abs(fovx_r - fovx_l) > 1e-6) or (abs(fovy_t - fovy_b) > 1e-6)
+        if has_valid_offcenter:
+            offcenter_count += 1
+        else:
+            standard_count += 1
         
-        #height = intr.height
-        #width = intr.width
-        height = height_p #改称我文件中的数值
-        width = width_p
+        # 如果有偏心参数，使用fov_results.txt中的宽高；否则使用COLMAP的原始宽高
+        if fov_data and width_p > 0 and height_p > 0:
+            height = height_p
+            width = width_p
+        else:
+            # 没有偏心参数时，使用COLMAP的原始宽高
+            height = intr.height
+            width = intr.width
 
         uid = intr.id
         R = np.transpose(qvec2rotmat(extr.qvec))
@@ -118,6 +148,20 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder, fov_results
                               fovx_r=fovx_r, fovx_l=fovx_l, fovy_t=fovy_t, fovy_b=fovy_b)
         cam_infos.append(cam_info)
     sys.stdout.write('\n')
+    
+    # 输出核心统计信息
+    total_cameras = len(cam_infos)
+    
+    if matched_count == 0 and len(fov_results_dict) > 0:
+        print(f"[参数检查] ⚠ 警告: 没有匹配到任何偏心参数！请检查fov_results.txt中的图片名称是否与COLMAP images.txt中的名称一致")
+    
+    if offcenter_count > 0 and standard_count > 0:
+        print(f"[混合模式] ✓ 检测到混合模式：{offcenter_count}个相机有偏心参数，{standard_count}个相机无偏心参数")
+    elif offcenter_count > 0:
+        print(f"[投影模式] 所有{offcenter_count}个相机都有偏心参数，将使用偏心投影")
+    elif len(fov_results_dict) > 0:
+        print(f"[投影模式] 所有{total_cameras}个相机都没有偏心参数，将使用标准投影")
+    
     return cam_infos
 
 def fetchPly(path):
@@ -159,12 +203,43 @@ def readColmapSceneInfo(path, images, eval, llffhold=8):
     # 读取fov_results.txt
     fov_results_path = os.path.join(path, "sparse/0", "fov_results.txt")
     fov_results_dict = {}
+    fov_results_count = 0
+    fov_results_skipped = 0
+    fov_image_names = set()  # 收集fov_results.txt中的所有图片名称
+    
     if os.path.exists(fov_results_path):
-        with open(fov_results_path, 'r') as f:
-            for line in f:
-                parts = line.strip().split(',')
+        with open(fov_results_path, 'r', encoding='utf-8') as f:
+            for line_num, line in enumerate(f, 1):
+                line = line.strip()
+                if not line or line.startswith('#'):  # 跳过空行和注释行
+                    continue
+                parts = line.split(',')
+                # 支持两种格式：
+                # 格式1（8列，带索引）: 索引,图片名,fovx_r,fovx_l,fovy_t,fovy_b,宽度,高度
+                # 格式2（7列，无索引）: 图片名,fovx_r,fovx_l,fovy_t,fovy_b,宽度,高度
                 if len(parts) == 8:
-                    idx, img_name, fovx_r, fovx_l, fovy_t, fovy_b, width_p, height_p = parts
+                    try:
+                        idx, img_name, fovx_r, fovx_l, fovy_t, fovy_b, width_p, height_p = parts
+                        # 索引字段被读取但不使用，匹配仅通过图片名称进行
+                    except (ValueError, IndexError) as e:
+                        fov_results_skipped += 1
+                        continue
+                elif len(parts) == 7:
+                    try:
+                        # 无索引格式：直接跳过第一列（索引）
+                        img_name, fovx_r, fovx_l, fovy_t, fovy_b, width_p, height_p = parts
+                    except (ValueError, IndexError) as e:
+                        fov_results_skipped += 1
+                        continue
+                else:
+                    fov_results_skipped += 1
+                    continue
+                
+                # 处理数据（两种格式统一处理）
+                try:
+                    # 去除图片名称中的空格
+                    img_name = img_name.strip()
+                    fov_image_names.add(img_name)  # 添加到集合中
                     fov_results_dict[img_name] = {
                         'fovx_r': float(fovx_r),
                         'fovx_l': float(fovx_l),
@@ -173,6 +248,43 @@ def readColmapSceneInfo(path, images, eval, llffhold=8):
                         'width_p': float(width_p),
                         'height_p': float(height_p)
                     }
+                    fov_results_count += 1
+                except (ValueError, IndexError) as e:
+                    fov_results_skipped += 1
+        if fov_results_count > 0:
+            print(f"[读取fov_results.txt] 成功读取: {fov_results_count}条记录" + (f", 跳过: {fov_results_skipped}条" if fov_results_skipped > 0 else ""))
+    else:
+        print(f"[读取fov_results.txt] 文件不存在: {fov_results_path}")
+    
+    # 收集COLMAP images中的所有图片名称（用于匹配检查）
+    colmap_image_names_full = {}  # 完整路径 -> 原始名称
+    colmap_image_names_basename = {}  # basename -> 原始名称列表
+    if cam_extrinsics:
+        for extr in cam_extrinsics.values():
+            full_name = extr.name
+            basename = os.path.basename(full_name)
+            colmap_image_names_full[full_name] = full_name
+            # 收集所有basename对应的原始名称
+            if basename not in colmap_image_names_basename:
+                colmap_image_names_basename[basename] = []
+            colmap_image_names_basename[basename].append(full_name)
+    
+    # 匹配检查：检测fov_results.txt中的图片名称是否能在COLMAP images中找到
+    if fov_image_names and cam_extrinsics:
+        matched_count_check = 0
+        for fov_name in fov_image_names:
+            # 方法1: 精确匹配（完整路径）
+            if fov_name in colmap_image_names_full:
+                matched_count_check += 1
+            else:
+                # 方法2: basename匹配
+                fov_basename = os.path.basename(fov_name)
+                if fov_basename in colmap_image_names_basename:
+                    matched_count_check += 1
+        
+        if matched_count_check < len(fov_image_names):
+            print(f"[匹配检查] ⚠ 警告: fov_results.txt中有 {len(fov_image_names) - matched_count_check} 个图片名称无法在COLMAP images.txt中找到匹配")
+        # 匹配成功时不输出，避免冗余信息
     reading_dir = "images" if images == None else images
     cam_infos_unsorted = readColmapCameras(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, images_folder=os.path.join(path, reading_dir),fov_results_dict=fov_results_dict)
     cam_infos = sorted(cam_infos_unsorted.copy(), key = lambda x : x.image_name)
