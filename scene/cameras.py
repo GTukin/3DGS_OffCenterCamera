@@ -20,7 +20,7 @@ class Camera(nn.Module):
     def __init__(self, colmap_id, R, T, FoVx, FoVy, image, gt_alpha_mask,
                  image_name, uid,
                  trans=np.array([0.0, 0.0, 0.0]), scale=1.0, data_device = "cuda",
-                fovx_r=0.0, fovx_l=0.0, fovy_t=0.0, fovy_b=0.0
+                fovx_r=0.0, fovx_l=0.0, fovy_t=0.0, fovy_b=0.0, ocmodel=False
                  ):
         super(Camera, self).__init__()
 
@@ -35,6 +35,8 @@ class Camera(nn.Module):
         self.fovx_l = fovx_l
         self.fovy_t = fovy_t
         self.fovy_b = fovy_b
+        self.ocmodel = ocmodel
+        self.using_offcenter_projection = False  # 标记是否实际使用了偏心投影
 
 
         try:
@@ -60,8 +62,21 @@ class Camera(nn.Module):
         self.scale = scale
         
         self.world_view_transform = torch.tensor(getWorld2View2(R, T, trans, scale)).transpose(0, 1).cuda()
-        #self.projection_matrix = getProjectionMatrix(znear=self.znear, zfar=self.zfar, fovX=self.FoVx, fovY=self.FoVy).transpose(0,1).cuda()
-        self.projection_matrix = getProjectionMatrix_p(fovx_r=self.fovx_r, fovx_l=self.fovx_l, fovy_t=self.fovy_t, fovy_b=self.fovy_b, near=self.znear, far=self.zfar).transpose(0,1).cuda()
+        
+        # 判断是否有有效的偏心参数（允许混合模式：部分图像有偏心，部分没有）
+        # 如果偏心参数全为0或接近0，则使用标准投影；否则使用偏心投影
+        has_valid_offcenter = (abs(self.fovx_r - self.fovx_l) > 1e-6) or (abs(self.fovy_t - self.fovy_b) > 1e-6)
+        
+        # 根据 ocmodel 参数和是否有有效偏心参数选择投影矩阵
+        if self.ocmodel and has_valid_offcenter:
+            # 使用偏心投影（仅当有有效偏心参数时）
+            self.using_offcenter_projection = True
+            self.projection_matrix = getProjectionMatrix_p(fovx_r=self.fovx_r, fovx_l=self.fovx_l, fovy_t=self.fovy_t, fovy_b=self.fovy_b, near=self.znear, far=self.zfar).transpose(0,1).cuda()
+        else:
+            # 使用标准投影（当ocmodel=False或没有有效偏心参数时）
+            self.using_offcenter_projection = False
+            self.projection_matrix = getProjectionMatrix(znear=self.znear, zfar=self.zfar, fovX=self.FoVx, fovY=self.FoVy).transpose(0,1).cuda()
+        
         self.full_proj_transform = (self.world_view_transform.unsqueeze(0).bmm(self.projection_matrix.unsqueeze(0))).squeeze(0)
         self.camera_center = self.world_view_transform.inverse()[3, :3]
         
